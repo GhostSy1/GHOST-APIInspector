@@ -1,74 +1,75 @@
 # GHOST-APIInspector
 
-[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-> **Professional Authorized Security Assessment & Offensive Operations Suite**  
-> Developed by Ghost-SY1.
+> Developed by Abdulaziz (Ghost-SY1). Authorized Professional API Security, SSRF & IDOR/BOLA Analyzer.
 
 ---
 
-## Table of Contents
-1. [Overview](#overview)
-2. [Key Capabilities](#key-capabilities)
-3. [Repository Structure](#repository-structure)
-4. [Installation](#installation)
-5. [Operational Usage](#operational-usage)
-6. [Audit Reports](#audit-reports)
-7. [License](#license)
+## Overview & Purpose
+**GHOST-APIInspector** is an enterprise-grade API security testing tool designed for authorized penetration testing, bug bounty assessments (e.g., HackenProof), and CI/CD security pipelines. It performs non-destructive endpoint discovery, authorized Server-Side Request Forgery (SSRF) testing, and Broken Object Level Authorization (IDOR/BOLA) validation using multi-user session tokens.
 
 ---
 
-## Overview
-**GHOST-APIInspector** is engineered to provide deep empirical reconnaissance, asset discovery, and security posture validation for authorized red team engagements. Designed for high-performance execution via command-line interface, it eliminates speculative outputs and relies entirely on empirical socket handshakes, protocol banners, and structured signature databases.
+## Key Features
+- **Endpoint Enumeration**: Discovers active API paths (`/api/v1`, `/swagger.json`, `/openapi.json`, `/graphql`).
+- **Authorized SSRF Inspector**: Safely tests external URL fetching parameters against user-owned OAST callbacks (e.g., Burp Collaborator).
+- **IDOR / BOLA Validator**: Compares resource access responses across two distinct user tokens (`--token-a` and `--token-b`) to spot authorization flaws.
+- **Zero Mock Data**: Strictly outputs telemetry derived from real HTTP exchanges and active socket probes.
 
 ---
 
-## Key Capabilities
-- **Automated Banner & Interface Initialization**: Instantly clears terminal buffer, displays the authorized Ghost-SY1 operational banner, and accepts live target input.
-- **Empirical Reconnaissance Engine**: Executes direct protocol probing and signature matching against structured local databases.
-- **Standardized Audit Trails**: Automatically exports machine-readable assessment reports in JSON and CSV formats.
+## Installation & Setup
 
----
-
-## Repository Structure
-```text
-GHOST-APIInspector/
-├── src/                  # Core engine modules
-├── db/                   # Vulnerability signatures & intelligence DB
-├── docs/                 # Detailed architecture & operational manuals
-├── tests/                # Unit and integration test suites
-├── reports/              # Exported audit output directory
-├── main.py               # Primary CLI execution entry point
-├── requirements.txt      # Python dependencies
-└── README.md             # Project documentation
-```
-
----
-
-## Installation
-Clone the repository and install the required dependencies:
 ```bash
 git clone https://github.com/GhostSy1/GHOST-APIInspector.git
 cd GHOST-APIInspector
-pip install -r requirements.txt
+python3 -m pip install --upgrade pip
 ```
 
 ---
 
-## Operational Usage
-Execute the tool directly from the terminal:
+## Usage & Command Line Reference
+
 ```bash
-python3 main.py
+python3 main.py --target https://api.target.com --callback https://your-callback.com --idor-url https://api.target.com/v1/user/101 --token-a TOKEN_USER_1 --token-b TOKEN_USER_2 --json report.json
 ```
-Upon execution, the terminal will prompt for the target IP, hostname, or configuration path, executing the assessment sequence and writing structured reports to disk.
+
+| Argument | Description | Default |
+|---|---|---|
+| `--target` | Target API Base URL | Interactive prompt |
+| `--callback` | Authorized SSRF callback URL | None |
+| `--idor-url` | Specific endpoint for IDOR/BOLA comparison | None |
+| `--token-a` | Auth token for User Context A | None |
+| `--token-b` | Auth token for User Context B | None |
+| `--json` | Output JSON report path | `api_report.json` |
 
 ---
 
-## Audit Reports
-Generated reports include precise timestamps, target parameters, verified signatures, and operational status logs saved under `reports/` and root output files (`report.json`).
+## CI/CD Pipeline Integration
+You can integrate GHOST-APIInspector into GitHub Actions to automatically run API security checks against staging environments:
+
+```yaml
+name: GHOST-APIInspector CI/CD
+on:
+  push:
+    branches: [ main ]
+jobs:
+  api-security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Run API Inspector
+        run: |
+          python3 main.py --target https://staging.api.target.com --json staging_report.json
+```
 
 ---
 
-## License
-Distributed under the MIT License. See `LICENSE` for more information.
+## Legal & Compliance Notice
+This tool is strictly intended for authorized security testing under written permission. Unauthorized use is prohibited.
+
+---
+**License**: MIT / Proprietary Operational Use.
