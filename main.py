@@ -21,6 +21,20 @@ def banner():
     GHOST-APIInspector: Authorized API, SSRF, IDOR, SQLi, XSS & BFLA Inspector (v3.4-PRO)
 """)
 
+def classify_bfla_status(status_code):
+    """Return True only when a low-privilege request reaches the function."""
+    return status_code in {200, 201}
+
+
+def compare_idor_responses(status_a, body_a, status_b, body_b):
+    """Return a potential BOLA signal for two authorized test identities.
+
+    This is a triage signal, not a final vulnerability proof. Both requests must
+    succeed and return the same resource representation before escalation.
+    """
+    return status_a == 200 and status_b == 200 and bool(body_a) and body_a == body_b
+
+
 def inspect_api(target_url, callback_url=None, test_endpoint=None, token_a=None, token_b=None, scan_vulnerabilities=False, bfla_endpoint=None, low_priv_token=None):
     findings = []
     ctx = ssl.create_default_context()
@@ -80,7 +94,7 @@ def inspect_api(target_url, callback_url=None, test_endpoint=None, token_a=None,
             code_b = resp_b.getcode()
             body_b = resp_b.read().decode('utf-8', errors='ignore')
 
-            bola_risk = (code_a == 200 and code_b == 200 and body_a == body_b)
+            bola_risk = compare_idor_responses(code_a, body_a, code_b, body_b)
             findings.append({
                 "idor_test_endpoint": test_endpoint,
                 "user_a_status": code_a,
@@ -97,7 +111,7 @@ def inspect_api(target_url, callback_url=None, test_endpoint=None, token_a=None,
             req_bfla = urllib.request.Request(bfla_endpoint, headers={'Authorization': f'Bearer {low_priv_token}', 'User-Agent': 'Ghost-APIInspector/3.4-BFLA'})
             resp_bfla = urllib.request.urlopen(req_bfla, timeout=5, context=ctx)
             code_bfla = resp_bfla.getcode()
-            bfla_risk = (code_bfla == 200 or code_bfla == 201)
+            bfla_risk = classify_bfla_status(code_bfla)
             findings.append({
                 "bfla_test_endpoint": bfla_endpoint,
                 "low_priv_status_code": code_bfla,
@@ -164,12 +178,18 @@ def main():
     parser.add_argument("--json", help="Output JSON report path", default="api_report.json")
     args, unknown = parser.parse_known_args()
 
+    # CI may provide tokens through GitHub encrypted environment variables.
+    # They are intentionally not echoed and are not required for discovery-only scans.
+    token_a = args.token_a or os.getenv("GHOST_TOKEN_A")
+    token_b = args.token_b or os.getenv("GHOST_TOKEN_B")
+    low_priv_token = args.low_priv_token or os.getenv("GHOST_LOW_PRIV_TOKEN")
+
     target = args.target
     if not target:
         target = input("[*] Enter Target API Base URL: ").strip()
 
     print(f"\n[+] Probing API endpoints against: {target}")
-    findings = inspect_api(target, callback_url=args.callback, test_endpoint=args.idor_url, token_a=args.token_a, token_b=args.token_b, scan_vulnerabilities=args.scan_vulns, bfla_endpoint=args.bfla_url, low_priv_token=args.low_priv_token)
+    findings = inspect_api(target, callback_url=args.callback, test_endpoint=args.idor_url, token_a=token_a, token_b=token_b, scan_vulnerabilities=args.scan_vulns, bfla_endpoint=args.bfla_url, low_priv_token=low_priv_token)
 
     report = {
         "target": target,

@@ -1,42 +1,75 @@
 name: GHOST-APIInspector Enterprise CI/CD
+
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   unit-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python 3.10
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
-      - name: Run Unit Tests for BFLA and IDOR logic
-        run: |
-          python3 -m unittest discover -s tests -p "test_*.py"
+          python-version: "3.11"
+      - name: Run local HTTP unit tests for BFLA and IDOR
+        run: python3 -m unittest discover -s tests -p "test_*.py"
 
-  staging-security-scan:
+  authorized-integration-scan:
     needs: unit-tests
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    env:
+      STAGING_API_URL: ${{ secrets.STAGING_API_URL }}
+      STAGING_ALLOWED_HOSTS: ${{ vars.STAGING_ALLOWED_HOSTS }}
+      IDOR_URL: ${{ secrets.IDOR_URL }}
+      BFLA_URL: ${{ secrets.BFLA_URL }}
+      GHOST_TOKEN_A: ${{ secrets.USER_TOKEN_A }}
+      GHOST_TOKEN_B: ${{ secrets.USER_TOKEN_B }}
+      GHOST_LOW_PRIV_TOKEN: ${{ secrets.LOW_PRIV_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python 3.10
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
-      - name: Run Authorized API Inspector on Staging (Allowlisted)
-        env:
-          STAGING_API_URL: ${{ secrets.STAGING_API_URL }}
-          USER_TOKEN_A: ${{ secrets.USER_TOKEN_A }}
-          USER_TOKEN_B: ${{ secrets.USER_TOKEN_B }}
+          python-version: "3.11"
+      - name: Validate staging target allowlist
         run: |
-          if [ -n "$STAGING_API_URL" ]; then
-            python3 main.py --target "$STAGING_API_URL" --json staging_report.json
-            echo "Staging API scan completed successfully."
-          else
-            echo "Staging URL secret not set. Skipping live scan."
+          python3 - <<'PY'
+          import os
+          from urllib.parse import urlparse
+
+          target = os.environ.get("STAGING_API_URL", "").strip()
+          allowed = {item.strip().lower() for item in os.environ.get("STAGING_ALLOWED_HOSTS", "").split(",") if item.strip()}
+          if not target or not allowed:
+              raise SystemExit("STAGING_API_URL and STAGING_ALLOWED_HOSTS are required for the authorized scan")
+          parsed = urlparse(target)
+          if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+              raise SystemExit("STAGING_API_URL must be an HTTP(S) URL")
+          if parsed.hostname.lower() not in allowed:
+              raise SystemExit("Target host is not in STAGING_ALLOWED_HOSTS")
+          print(f"Authorized staging host validated: {parsed.hostname}")
+          PY
+      - name: Run authorized BFLA and IDOR scan
+        run: |
+          args=(python3 main.py --target "$STAGING_API_URL" --json api-inspector-report.json)
+          if [ -n "$IDOR_URL" ] && [ -n "$GHOST_TOKEN_A" ] && [ -n "$GHOST_TOKEN_B" ]; then
+            args+=(--idor-url "$IDOR_URL")
           fi
+          if [ -n "$BFLA_URL" ] && [ -n "$GHOST_LOW_PRIV_TOKEN" ]; then
+            args+=(--bfla-url "$BFLA_URL")
+          fi
+          "${args[@]}"
+      - name: Publish scan report
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghost-api-inspector-report
+          path: api-inspector-report.json
+          if-no-files-found: error
