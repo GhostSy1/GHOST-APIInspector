@@ -5,7 +5,7 @@
 ---
 
 ## Overview & Purpose
-**GHOST-APIInspector** is an enterprise-grade API security testing tool designed for authorized penetration testing, bug bounty assessments (e.g., HackenProof), and CI/CD security pipelines. It performs non-destructive endpoint discovery, authorized Server-Side Request Forgery (SSRF) testing, Broken Object Level Authorization (IDOR/BOLA) validation, and Function-Level Authorization (BFLA) checks using multi-privilege session tokens.
+**GHOST-APIInspector** is an enterprise-grade API security testing tool designed for authorized penetration testing, bug bounty assessments (e.g., HackenProof), and CI/CD security pipelines. It performs non-destructive endpoint discovery, authorized Server-Side Request Forgery (SSRF) testing, Broken Object Level Authorization (IDOR/BOLA) validation, and Function-Level Authorization (BFLA) checks.
 
 ---
 
@@ -13,28 +13,27 @@
 - **Endpoint Enumeration**: Discovers active API paths (`/api/v1`, `/swagger.json`, `/openapi.json`, `/graphql`).
 - **Authorized SSRF Inspector**: Safely tests external URL fetching parameters against user-owned OAST callbacks.
 - **IDOR / BOLA Validator**: Compares resource access across two distinct user tokens (`--token-a` and `--token-b`).
-- **BFLA (Function-Level Authorization) Validator**: Tests whether low-privileged tokens can access administrative functions (`--bfla-url` and `--low-priv-token`).
-- **SQLi & XSS Canary Testing**: Low-impact reflection and error-based indicator analysis (`--scan-vulns`).
-- **Zero Mock Data**: Strictly outputs telemetry derived from real HTTP exchanges and active socket probes.
+- **BFLA Validator**: Tests whether low-privileged tokens can access administrative functions (`--bfla-url` and `--low-priv-token`).
+- **Unit Testing**: Fully validated logic through automated unit tests (`tests/test_api.py`).
 
 ---
 
-## Usage & Command Line Reference
-
+## Running Unit Tests Locally
+To verify the BFLA, IDOR, and core logic locally:
 ```bash
-python3 main.py --target https://api.target.com --bfla-url https://api.target.com/admin/settings --low-priv-token TOKEN_USER_REGULAR --json report.json
+python3 -m unittest discover -s tests -p "test_*.py"
 ```
 
-| Argument | Description | Default |
-|---|---|---|
-| `--target` | Target API Base URL | Interactive prompt |
-| `--callback` | Authorized SSRF callback URL | None |
-| `--idor-url` | Specific endpoint for IDOR/BOLA comparison | None |
-| `--token-a` / `--token-b` | Auth tokens for IDOR comparison | None |
-| `--bfla-url` | Privileged admin endpoint for BFLA testing | None |
-| `--low-priv-token` | Low-privilege token for BFLA testing | None |
-| `--scan-vulns` | Enable authorized SQLi/XSS canary checks | False |
-| `--json` | Output JSON report path | `api_report.json` |
+---
+
+## CI/CD Pipeline Setup & Secrets Configuration
+To integrate GHOST-APIInspector into your GitHub Actions pipeline:
+1. Go to your repository **Settings > Secrets and variables > Actions**.
+2. Add the following optional repository secrets for live staging verification:
+   - `STAGING_API_URL`: Base URL of your authorized staging API.
+   - `USER_TOKEN_A`: Session token for User Context A.
+   - `USER_TOKEN_B`: Session token for User Context B.
+3. The workflow in `.github/workflows/api_inspector_ci.yml` will automatically run unit tests on every Pull Request and execute safe authorized checks on pushes to `main`.
 
 ---
 **License**: MIT / Proprietary Operational Use.

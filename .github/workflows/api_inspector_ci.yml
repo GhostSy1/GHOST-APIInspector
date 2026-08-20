@@ -1,11 +1,12 @@
-name: GHOST-APIInspector CI
+name: GHOST-APIInspector Enterprise CI/CD
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+
 jobs:
-  inspect:
+  unit-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -13,6 +14,29 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - name: Run API Inspector Syntax and Health Check
+      - name: Run Unit Tests for BFLA and IDOR logic
         run: |
-          python3 main.py --help
+          python3 -m unittest discover -s tests -p "test_*.py"
+
+  staging-security-scan:
+    needs: unit-tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Run Authorized API Inspector on Staging (Allowlisted)
+        env:
+          STAGING_API_URL: ${{ secrets.STAGING_API_URL }}
+          USER_TOKEN_A: ${{ secrets.USER_TOKEN_A }}
+          USER_TOKEN_B: ${{ secrets.USER_TOKEN_B }}
+        run: |
+          if [ -n "$STAGING_API_URL" ]; then
+            python3 main.py --target "$STAGING_API_URL" --json staging_report.json
+            echo "Staging API scan completed successfully."
+          else
+            echo "Staging URL secret not set. Skipping live scan."
+          fi
