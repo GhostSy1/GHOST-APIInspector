@@ -6,6 +6,16 @@ import urllib.request
 import urllib.parse
 import ssl
 
+def classify_bfla_status(status_code):
+    """Return True only when a low-privilege request reaches the function."""
+    return status_code in {200, 201}
+
+
+def compare_idor_responses(status_a, body_a, status_b, body_b):
+    """Return a potential BOLA signal for two authorized test identities."""
+    return status_a == 200 and status_b == 200 and bool(body_a) and body_a == body_b
+
+
 def banner():
     if os.name == 'nt':
         os.system('cls')
@@ -80,7 +90,7 @@ def inspect_api(target_url, callback_url=None, test_endpoint=None, token_a=None,
             code_b = resp_b.getcode()
             body_b = resp_b.read().decode('utf-8', errors='ignore')
 
-            bola_risk = (code_a == 200 and code_b == 200 and body_a == body_b)
+            bola_risk = compare_idor_responses(code_a, body_a, code_b, body_b)
             findings.append({
                 "idor_test_endpoint": test_endpoint,
                 "user_a_status": code_a,
@@ -97,7 +107,7 @@ def inspect_api(target_url, callback_url=None, test_endpoint=None, token_a=None,
             req_bfla = urllib.request.Request(bfla_endpoint, headers={'Authorization': f'Bearer {low_priv_token}', 'User-Agent': 'Ghost-APIInspector/3.5-BFLA'})
             resp_bfla = urllib.request.urlopen(req_bfla, timeout=5, context=ctx)
             code_bfla = resp_bfla.getcode()
-            bfla_risk = (code_bfla in {200, 201})
+            bfla_risk = classify_bfla_status(code_bfla)
             findings.append({
                 "bfla_test_endpoint": bfla_endpoint,
                 "low_priv_status_code": code_bfla,

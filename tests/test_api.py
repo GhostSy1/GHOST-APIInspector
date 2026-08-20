@@ -17,8 +17,6 @@ class AccessControlHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            # The deliberately controlled local service returns the same owned
-            # resource to both test identities; the scanner must report a triage signal.
             self.wfile.write(b'{"id":1,"owner":"account-a"}')
             return
         if self.path == "/admin/settings":
@@ -31,9 +29,22 @@ class AccessControlHandler(BaseHTTPRequestHandler):
                 self.send_response(403)
                 self.end_headers()
             return
-        if self.path in {"/api/v1", "/swagger.json", "/openapi.json", "/v1/health", "/graphql", "/auth/login"}:
-            self.send_response(404)
+        self.send_response(404)
+        self.end_headers()
+
+    def do_PUT(self):
+        auth = self.headers.get("Authorization", "")
+        if self.path == "/api/v1/profile":
+            if not auth:
+                self.send_response(401)
+                self.end_headers()
+                return
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length).decode('utf-8', errors='ignore')
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
             self.end_headers()
+            self.wfile.write(body.encode('utf-8'))
             return
         self.send_response(404)
         self.end_headers()
@@ -68,7 +79,7 @@ class TestAPIInspectorAccessControl(unittest.TestCase):
         self.assertFalse(compare_idor_responses(200, "a", 200, "b"))
         self.assertFalse(compare_idor_responses(200, "", 200, ""))
 
-    def test_live_local_http_idor_and_bfla_requests(self):
+    def test_live_local_http_inspections(self):
         findings = inspect_api(
             self.base_url,
             test_endpoint=f"{self.base_url}/resource/1",
@@ -76,23 +87,28 @@ class TestAPIInspectorAccessControl(unittest.TestCase):
             token_b="account-b-token",
             bfla_endpoint=f"{self.base_url}/admin/settings",
             low_priv_token="low-priv",
+            mass_endpoint=f"{self.base_url}/api/v1/profile",
+            mass_token="mass-test-token"
         )
 
         idor = next(item for item in findings if "idor_test_endpoint" in item)
         bfla = next(item for item in findings if "bfla_test_endpoint" in item)
+        mass = next(item for item in findings if "mass_assignment_endpoint" in item)
 
         self.assertEqual(idor["user_a_status"], 200)
         self.assertEqual(idor["user_b_status"], 200)
         self.assertTrue(idor["bola_potential_vulnerability"])
         self.assertEqual(bfla["low_priv_status_code"], 200)
         self.assertTrue(bfla["bfla_potential_vulnerability"])
+        self.assertEqual(mass["status_code"], 200)
+        self.assertTrue(mass["mass_assignment_potential_vulnerability"])
 
         serialized = json.dumps(findings)
         self.assertNotIn("account-a-token", serialized)
         self.assertNotIn("account-b-token", serialized)
         self.assertNotIn("low-priv", serialized)
+        self.assertNotIn("mass-test-token", serialized)
 
 
 if __name__ == "__main__":
     unittest.main()
-
