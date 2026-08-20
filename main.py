@@ -18,10 +18,10 @@ def banner():
  ██║   ██║██╔══██║██║   ██║╚════██║   ██║       ██╔══██║██╔═══╝  ██║
  ╚██████╔╝██║  ██║╚██████╔╝███████║   ██║       ██║  ██║██║      ██║
   ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝   ╚═╝       ╚═╝  ╚═╝╚═╝      ╚═╝
-    GHOST-APIInspector: Authorized API, SSRF & IDOR/BOLA Inspector (v3.2-PRO)
+    GHOST-APIInspector: Authorized API, SSRF, IDOR, SQLi & XSS Inspector (v3.3-PRO)
 """)
 
-def inspect_api(target_url, callback_url=None, test_endpoint=None, token_a=None, token_b=None):
+def inspect_api(target_url, callback_url=None, test_endpoint=None, token_a=None, token_b=None, scan_vulnerabilities=False):
     findings = []
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
@@ -33,7 +33,7 @@ def inspect_api(target_url, callback_url=None, test_endpoint=None, token_a=None,
     for path in common_api_paths:
         url = base_url + path
         try:
-            req = urllib.request.Request(url, headers={'User-Agent': 'Ghost-APIInspector/3.2'})
+            req = urllib.request.Request(url, headers={'User-Agent': 'Ghost-APIInspector/3.3'})
             with urllib.request.urlopen(req, timeout=4, context=ctx) as resp:
                 findings.append({
                     "endpoint": url,
@@ -56,68 +56,85 @@ def inspect_api(target_url, callback_url=None, test_endpoint=None, token_a=None,
         print(f"[+] Performing authorized SSRF parameter injection test using callback: {callback_url}")
         ssrf_test_url = f"{base_url}/api/v1/fetch?url={urllib.parse.quote(callback_url)}"
         try:
-            req = urllib.request.Request(ssrf_test_url, headers={'User-Agent': 'Ghost-APIInspector/3.2-SSRF-Test'})
+            req = urllib.request.Request(ssrf_test_url, headers={'User-Agent': 'Ghost-APIInspector/3.3-SSRF-Test'})
             with urllib.request.urlopen(req, timeout=5, context=ctx) as resp:
                 findings.append({
                     "ssrf_probe_endpoint": ssrf_test_url,
                     "status": resp.getcode(),
                     "vulnerable_indicator": "Endpoint accepted external URL parameter for server-side fetching"
                 })
-        except urllib.error.HTTPError as e:
-            findings.append({
-                "ssrf_probe_endpoint": ssrf_test_url,
-                "status": e.code,
-                "note": "SSRF probe returned HTTP error"
-            })
         except Exception as e:
-            findings.append({
-                "ssrf_probe_endpoint": ssrf_test_url,
-                "error": str(e)
-            })
+            findings.append({"ssrf_probe_endpoint": ssrf_test_url, "error": str(e)})
 
     # Safe Authorized IDOR / BOLA Inspection
     if test_endpoint and token_a and token_b:
         print(f"[+] Performing authorized IDOR / BOLA access control test on: {test_endpoint}")
         try:
-            # Request with Token A
-            req_a = urllib.request.Request(test_endpoint, headers={'Authorization': f'Bearer {token_a}', 'User-Agent': 'Ghost-APIInspector/3.2-IDOR-Test'})
-            resp_a = urllib.urlopen(req_a, timeout=5, context=ctx) if hasattr(urllib, 'urlopen') else urllib.request.urlopen(req_a, timeout=5, context=ctx)
+            req_a = urllib.request.Request(test_endpoint, headers={'Authorization': f'Bearer {token_a}', 'User-Agent': 'Ghost-APIInspector/3.3-IDOR'})
+            resp_a = urllib.request.urlopen(req_a, timeout=5, context=ctx)
             code_a = resp_a.getcode()
             body_a = resp_a.read().decode('utf-8', errors='ignore')
             
-            # Request with Token B (different user/context)
-            req_b = urllib.request.Request(test_endpoint, headers={'Authorization': f'Bearer {token_b}', 'User-Agent': 'Ghost-APIInspector/3.2-IDOR-Test'})
+            req_b = urllib.request.Request(test_endpoint, headers={'Authorization': f'Bearer {token_b}', 'User-Agent': 'Ghost-APIInspector/3.3-IDOR'})
             resp_b = urllib.request.urlopen(req_b, timeout=5, context=ctx)
             code_b = resp_b.getcode()
             body_b = resp_b.read().decode('utf-8', errors='ignore')
 
-            bola_risk = False
-            if code_a == 200 and code_b == 200 and len(body_b) > 10 and body_a == body_b:
-                bola_risk = True
-
+            bola_risk = (code_a == 200 and code_b == 200 and body_a == body_b)
             findings.append({
                 "idor_test_endpoint": test_endpoint,
                 "user_a_status": code_a,
                 "user_b_status": code_b,
-                "bola_potential_vulnerability": bola_risk,
-                "note": "Both users received identical resources; check authorization logic if resource should be private."
+                "bola_potential_vulnerability": bola_risk
             })
         except Exception as e:
+            findings.append({"idor_test_endpoint": test_endpoint, "error": str(e)})
+
+    # Safe Authorized SQLi & XSS Canary Inspection
+    if scan_vulnerabilities:
+        print("[+] Performing authorized low-impact SQLi and XSS canary reflection analysis...")
+        sqli_canary = "'+OR+'1'='1"
+        xss_canary = "<script>console.log('GHOST-CANARY')</script>"
+        
+        test_canary_url = f"{base_url}/api/v1/search?q={urllib.parse.quote(sqli_canary)}"
+        try:
+            req = urllib.request.Request(test_canary_url, headers={'User-Agent': 'Ghost-APIInspector/3.3-SQLi'})
+            resp = urllib.request.urlopen(req, timeout=5, context=ctx)
+            body = resp.read().decode('utf-8', errors='ignore').lower()
+            sqli_indic = any(err in body for err in ["sql syntax", "mysql", "syntax error", "ora-", "sqlite3"])
             findings.append({
-                "idor_test_endpoint": test_endpoint,
-                "error": str(e)
+                "vulnerability_type": "SQL Injection (Error-based/Canary)",
+                "test_url": test_canary_url,
+                "potential_indicator_found": sqli_indic
             })
+        except Exception:
+            pass
+
+        test_xss_url = f"{base_url}/api/v1/search?q={urllib.parse.quote(xss_canary)}"
+        try:
+            req = urllib.request.Request(test_xss_url, headers={'User-Agent': 'Ghost-APIInspector/3.3-XSS'})
+            resp = urllib.request.urlopen(req, timeout=5, context=ctx)
+            body = resp.read().decode('utf-8', errors='ignore')
+            xss_indic = xss_canary in body
+            findings.append({
+                "vulnerability_type": "Reflected XSS (Canary Reflection)",
+                "test_url": test_xss_url,
+                "reflected": xss_indic
+            })
+        except Exception:
+            pass
 
     return findings
 
 def main():
     banner()
-    parser = argparse.ArgumentParser(description="GHOST-APIInspector Enterprise Engine with SSRF & IDOR Detection")
-    parser.add_argument("--target", help="Target API Base URL (e.g. https://api.target.com)")
-    parser.add_argument("--callback", help="Authorized OAST / SSRF callback URL")
+    parser = argparse.ArgumentParser(description="GHOST-APIInspector Enterprise Engine with SSRF, IDOR, SQLi & XSS Detection")
+    parser.add_argument("--target", help="Target API Base URL")
+    parser.add_argument("--callback", help="Authorized SSRF callback URL")
     parser.add_argument("--idor-url", help="Specific resource endpoint to test IDOR/BOLA")
-    parser.add_argument("--token-a", help="Auth token or API key for User A")
-    parser.add_argument("--token-b", help="Auth token or API key for User B")
+    parser.add_argument("--token-a", help="Auth token for User A")
+    parser.add_argument("--token-b", help="Auth token for User B")
+    parser.add_argument("--scan-vulns", action="store_true", help="Enable authorized SQLi and XSS canary testing")
     parser.add_argument("--json", help="Output JSON report path", default="api_report.json")
     args, unknown = parser.parse_known_args()
 
@@ -126,11 +143,11 @@ def main():
         target = input("[*] Enter Target API Base URL: ").strip()
 
     print(f"\n[+] Probing API endpoints against: {target}")
-    findings = inspect_api(target, callback_url=args.callback, test_endpoint=args.idor_url, token_a=args.token_a, token_b=args.token_b)
+    findings = inspect_api(target, callback_url=args.callback, test_endpoint=args.idor_url, token_a=args.token_a, token_b=args.token_b, scan_vulnerabilities=args.scan_vulns)
 
     report = {
         "target": target,
-        "engine": "GHOST-APIInspector v3.2-PRO",
+        "engine": "GHOST-APIInspector v3.3-PRO",
         "endpoints_analyzed": len(findings),
         "findings": findings
     }
