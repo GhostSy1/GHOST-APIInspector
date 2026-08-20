@@ -2,9 +2,9 @@ import os
 import sys
 import argparse
 import json
-import socket
 import urllib.request
 import urllib.parse
+import ssl
 
 def banner():
     if os.name == 'nt':
@@ -12,73 +12,70 @@ def banner():
     else:
         os.system('clear')
     print(r"""
-  ██████╗ ██╗  ██╗ ██████╗ ███████╗████████╗     ██╗███╗   ██╗████████╗███████╗██╗      
- ██╔════╝ ██║  ██║██╔═══██╗██╔════╝╚══██╔══╝     ██║████╗  ██║╚══██╔══╝██╔════╝██║      
- ██║  ███╗███████║██║   ██║███████╗   ██║        ██║██╔██╗ ██║   ██║   █████╗  ██║      
- ██║   ██║██╔══██║██║   ██║╚════██║   ██║        ██║██║╚██╗██║   ██║   ██╔══╝  ██║      
- ╚██████╔╝██║  ██║╚██████╔╝███████║   ██║        ██║██║ ╚████║   ██║   ███████╗███████╗ 
-  ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝   ╚═╝        ╚═╝╚═╝  ╚═══╝   ╚═╝   ╚══════╝╚══════╝ 
-    Ghost-SY1 Professional Security Module (Real Operational Execution)
+  ██████╗ ██╗  ██╗ ██████╗ ███████╗████████╗     █████╗ ██████╗ ██╗
+ ██╔════╝ ██║  ██║██╔═══██╗██╔════╝╚══██╔══╝    ██╔══██╗██╔══██╗██║
+ ██║  ███╗███████║██║   ██║███████╗   ██║       ███████║██████╔╝██║
+ ██║   ██║██╔══██║██║   ██║╚════██║   ██║       ██╔══██║██╔═══╝ ██║
+ ╚██████╔╝██║  ██║╚██████╔╝███████║   ██║       ██║  ██║██║     ██║
+  ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝   ╚═╝       ╚═╝  ╚═╝╚═╝     ╚═╝
+    GHOST-APIInspector: Authorized API Endpoint & Schema Security Analyzer
 """)
 
-def perform_operational_scan(target):
+def inspect_api(target_url):
     findings = []
-    # Real socket/HTTP check based on target type
-    if "http://" in target or "https://" in target:
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+
+    common_api_paths = ["/api/v1", "/swagger.json", "/openapi.json", "/v1/health", "/graphql", "/auth/login"]
+    base_url = target_url.rstrip("/")
+
+    for path in common_api_paths:
+        url = base_url + path
         try:
-            req = urllib.request.Request(target, headers={'User-Agent': 'Ghost-SY1-Scanner/3.0'})
-            with urllib.request.urlopen(req, timeout=5) as response:
+            req = urllib.request.Request(url, headers={'User-Agent': 'Ghost-APIInspector/3.0'})
+            with urllib.request.urlopen(req, timeout=4, context=ctx) as resp:
                 findings.append({
-                    "type": "HTTP Inspection",
-                    "status_code": response.getcode(),
-                    "headers": dict(response.info())
+                    "endpoint": url,
+                    "status": resp.getcode(),
+                    "content_type": resp.headers.get("Content-Type", ""),
+                    "active": True
                 })
-        except Exception as e:
-            findings.append({"type": "HTTP Error", "detail": str(e)})
-    else:
-        # Resolve hostname or check port
-        try:
-            ip = socket.gethostbyname(target)
-            findings.append({"type": "DNS Resolution", "target": target, "resolved_ip": ip})
-            
-            # Quick connect check on common ports (80, 443, 22)
-            for port in [80, 443, 22]:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(1)
-                res = s.connect_ex((ip, port))
-                if res == 0:
-                    findings.append({"type": "Port Open", "port": port})
-                s.close()
-        except Exception as e:
-            findings.append({"type": "Recon Error", "detail": str(e)})
-            
+        except urllib.error.HTTPError as e:
+            findings.append({
+                "endpoint": url,
+                "status": e.code,
+                "active": True,
+                "note": "Endpoint responded with HTTP error code"
+            })
+        except Exception:
+            pass
     return findings
 
 def main():
     banner()
-    parser = argparse.ArgumentParser(description="Operational Security Assessment Tool")
-    parser.add_argument("--target", help="Target domain, URL, or IP address")
-    parser.add_argument("--json", help="Output JSON report path", default="report.json")
+    parser = argparse.ArgumentParser(description="GHOST-APIInspector Enterprise Engine")
+    parser.add_argument("--target", help="Target API Base URL (e.g. https://api.target.com)")
+    parser.add_argument("--json", help="Output JSON report path", default="api_report.json")
     args, unknown = parser.parse_known_args()
 
     target = args.target
     if not target:
-        target = input("[*] Enter target asset (IP/URL/Domain): ").strip()
+        target = input("[*] Enter Target API Base URL: ").strip()
 
-    print(f"\n[+] Executing live operational scan against target: {target}")
-    findings = perform_operational_scan(target)
+    print(f"\n[+] Probing API endpoints against: {target}")
+    findings = inspect_api(target)
 
     report = {
         "target": target,
-        "execution_mode": "live-operational",
+        "engine": "GHOST-APIInspector v3.0-PRO",
+        "endpoints_analyzed": len(findings),
         "findings": findings
     }
 
     with open(args.json, "w") as f:
         json.dump(report, f, indent=4)
-        
-    print(f"[+] Operational report successfully saved to: {args.json}")
-    print("[+] Execution completed with zero mocked data.")
+    print(f"[+] API Inspector report saved to: {args.json}")
 
 if __name__ == "__main__":
     main()
