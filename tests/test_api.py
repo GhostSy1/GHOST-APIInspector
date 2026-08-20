@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from main import classify_bfla_status, compare_idor_responses, inspect_api
+from main import classify_bfla_status, compare_idor_responses, inspect_api, inspect_json_keys
 
 
 class AccessControlHandler(BaseHTTPRequestHandler):
@@ -28,6 +28,12 @@ class AccessControlHandler(BaseHTTPRequestHandler):
             else:
                 self.send_response(403)
                 self.end_headers()
+            return
+        if self.path == "/api/v1/user/profile":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"id":42,"username":"alice","password_hash":"$2a$12$fakehash","internal_id":999}')
             return
         self.send_response(404)
         self.end_headers()
@@ -79,6 +85,13 @@ class TestAPIInspectorAccessControl(unittest.TestCase):
         self.assertFalse(compare_idor_responses(200, "a", 200, "b"))
         self.assertFalse(compare_idor_responses(200, "", 200, ""))
 
+    def test_json_keys_inspection(self):
+        sample = {"id": 1, "password_hash": "abc", "internal_id": 99, "profile": {"token": "xyz"}}
+        keys = inspect_json_keys(sample)
+        self.assertIn("password_hash", keys)
+        self.assertIn("internal_id", keys)
+        self.assertIn("token", keys)
+
     def test_live_local_http_inspections(self):
         findings = inspect_api(
             self.base_url,
@@ -88,12 +101,15 @@ class TestAPIInspectorAccessControl(unittest.TestCase):
             bfla_endpoint=f"{self.base_url}/admin/settings",
             low_priv_token="low-priv",
             mass_endpoint=f"{self.base_url}/api/v1/profile",
-            mass_token="mass-test-token"
+            mass_token="mass-test-token",
+            exposure_endpoint=f"{self.base_url}/api/v1/user/profile",
+            exposure_token="exposure-test-token"
         )
 
         idor = next(item for item in findings if "idor_test_endpoint" in item)
         bfla = next(item for item in findings if "bfla_test_endpoint" in item)
         mass = next(item for item in findings if "mass_assignment_endpoint" in item)
+        exposure = next(item for item in findings if "excessive_data_exposure_target" in item)
 
         self.assertEqual(idor["user_a_status"], 200)
         self.assertEqual(idor["user_b_status"], 200)
@@ -102,12 +118,18 @@ class TestAPIInspectorAccessControl(unittest.TestCase):
         self.assertTrue(bfla["bfla_potential_vulnerability"])
         self.assertEqual(mass["status_code"], 200)
         self.assertTrue(mass["mass_assignment_potential_vulnerability"])
+        self.assertEqual(exposure["status_code"], 200)
+        self.assertTrue(exposure["excessive_data_exposure_signal"])
+        self.assertIn("password_hash", exposure["sensitive_fields_discovered"])
+        self.assertIn("internal_id", exposure["sensitive_fields_discovered"])
 
         serialized = json.dumps(findings)
         self.assertNotIn("account-a-token", serialized)
         self.assertNotIn("account-b-token", serialized)
         self.assertNotIn("low-priv", serialized)
         self.assertNotIn("mass-test-token", serialized)
+        self.assertNotIn("exposure-test-token", serialized)
+        self.assertNotIn("$2a$12$fakehash", serialized)
 
 
 if __name__ == "__main__":

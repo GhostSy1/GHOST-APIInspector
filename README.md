@@ -1,29 +1,30 @@
 # GHOST-APIInspector
 
-> Developed by Abdulaziz (Ghost-SY1). Authorized Professional API Security, SSRF, IDOR/BOLA, BFLA & Mass Assignment Analyzer.
+> Authorized API security assessment utility for controlled environments, developed by Abdulaziz (Ghost-SY1).
 
----
+## Purpose
 
-## Overview & Purpose
-**GHOST-APIInspector** is an enterprise-grade API security testing tool designed for authorized penetration testing, bug bounty assessments (e.g., HackenProof), and CI/CD security pipelines. It performs non-destructive endpoint discovery, authorized Server-Side Request Forgery (SSRF) testing, Broken Object Level Authorization (IDOR/BOLA) validation, Function-Level Authorization (BFLA) checks, and Mass Assignment (Mass Binding) vulnerability detection using session tokens.
+GHOST-APIInspector performs live, non-destructive API observations and authorization checks against a target that the operator owns or is explicitly authorized to assess. Its checks cover endpoint discovery, SSRF, BOLA/IDOR, BFLA, Mass Assignment, and Excessive Data Exposure (oversharing).
 
----
+## Excessive Data Exposure operation
 
-## Key Features
-- **Endpoint Enumeration**: Discovers active API paths (`/api/v1`, `/swagger.json`, `/openapi.json`, `/graphql`).
-- **Authorized SSRF Inspector**: Safely tests external URL fetching parameters against user-owned OAST callbacks.
-- **IDOR / BOLA Validator**: Compares resource access across two distinct user tokens (`--token-a` and `--token-b`).
-- **BFLA Validator**: Tests whether low-privileged tokens can access administrative functions (`--bfla-url` and `--low-priv-token`).
-- **Mass Assignment Inspector**: Tests if PUT/PATCH endpoints accept unbindable privileged properties (`--mass-url` and `--mass-token`).
-- **SQLi & XSS Canary Testing**: Low-impact reflection and error-based indicator analysis (`--scan-vulns`).
+The `--exposure-url` option inspects JSON responses for sensitive or undocumented field names (such as passwords, tokens, internal IDs, or auth keys) without printing or logging their values.
 
----
+```bash
+python3 main.py \
+  --target https://staging.example.test \
+  --exposure-url https://staging.example.test/api/v1/user/profile \
+  --exposure-token "$USER_TOKEN_A" \
+  --json exposure-report.json
+```
 
-## How to Analyze JSON Reports
-When you run GHOST-APIInspector, it outputs a JSON report (e.g., `api_report.json`). 
-1. **Raw Evidence vs. Verified Finding**: A finding like `bola_potential_vulnerability: true` or `mass_assignment_potential_vulnerability: true` is an **observational triage signal**, not a definitive vulnerability proof.
-2. **Reviewing Status Codes**: If User A and User B both get HTTP 200 with identical bodies on an object endpoint, verify whether that object is intended to be public.
-3. **Mass Assignment Verification**: If an endpoint accepts `role: admin` or `is_admin: true` in a PUT request without rejection, manually verify if the database state actually changed.
+A discovered sensitive field is an observational triage signal. Analysts must confirm whether the endpoint intentionally exposes those attributes to the given privilege level.
+
+## Local verification
+
+```bash
+python3 -m unittest discover -s tests -p "test_*.py"
+```
 
 ---
 **License**: MIT / Proprietary Operational Use.
