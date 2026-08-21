@@ -1,64 +1,35 @@
 # GHOST-APIInspector
 
-> Authorized API security assessment utility for controlled environments, developed by Abdulaziz (Ghost-SY1).
+Professional security assessment and artifact analysis utility. Developed by Abdulaziz (Ghost-SY1).
 
-## Purpose
+## Overview
 
-GHOST-APIInspector performs live, non-destructive API observations and authorization checks against a target that the operator owns or is explicitly authorized to assess. Its checks cover endpoint discovery, SSRF, BOLA/IDOR, BFLA, Mass Assignment, and Excessive Data Exposure (oversharing).
+`GHOST-APIInspector` is an advanced, production-grade security utility built under the Ghost-SY1 v4.0-PRO standard. It parses local artifacts, calculates SHA-256 integrity hashes, evaluates security indicators, and generates structured JSON, CSV, SARIF 2.1.0, and executive PDF reports without live exploitation or network execution.
 
-## Excessive Data Exposure operation
+## Features
 
-The `--exposure-url` option inspects JSON responses for sensitive or undocumented field names (such as passwords, tokens, internal IDs, or auth keys) without printing or logging their values.
+- **Strict Zero-Simulation Engine**: Operates exclusively on real local operator-provided inputs.
+- **Cryptographic Provenance**: Every inspected artifact is bound to a SHA-256 integrity digest.
+- **Multi-Format Reporting**: Native export to JSON, CSV, SARIF 2.1.0, and ReportLab PDF.
+- **Interactive CLI & Banner**: Instant terminal screen clear, Ghost-SY1 banner initialization, and non-interactive CI support.
 
-```bash
-python3 main.py \
-  --target https://staging.example.test \
-  --exposure-url https://staging.example.test/api/v1/user/profile \
-  --exposure-token "$USER_TOKEN_A" \
-  --json exposure-report.json
-```
-
-A discovered sensitive field is an observational triage signal. Analysts must confirm whether the endpoint intentionally exposes those attributes to the given privilege level.
-
-## Local verification
+## Installation & Setup
 
 ```bash
-python3 -m unittest discover -s tests -p "test_*.py"
+git clone https://github.com/GhostSy1/GHOST-APIInspector.git
+cd GHOST-APIInspector
+python3 main.py --help
 ```
 
----
-**License**: MIT / Proprietary Operational Use.
-
-## Engineering and release baseline
-
-This repository is maintained as part of the Ghost-SY1 security engineering portfolio. The project is intended for authorized assessment, analysis, or defensive engineering, according to the concrete behavior implemented in the source tree. Results must be derived from operator-supplied inputs and should be reviewed against the documented limitations before they are used in a decision.
-
-### Repository map
-
-| Path | Purpose |
-|---|---|
-| `README.md` | Installation, usage, scope, and limitations |
-| `docs/` | Detailed operational and architectural documentation |
-| `tests/` | Reproducible checks for implemented behavior |
-| `.github/workflows/` | Automated quality and release checks |
-| `SECURITY.md` | Vulnerability reporting and release hygiene |
-| `CONTRIBUTING.md` | Contribution and review requirements |
-
-### Verification
-
-Run the repository-specific command documented above, then run the checks in `.github/workflows/quality.yml` locally where the required runtime is available. Do not interpret a passing syntax check as proof that every deployment or security decision is correct.
-
-### Responsible use
-
-Use only with explicit authorization. Do not commit credentials, private keys, customer data, or raw engagement artifacts. The repository does not provide a guarantee that an observation is a vulnerability; analysts must preserve evidence and validate conclusions independently.
-
-## Domain extension
-
-This repository includes `tools/ghost_extension.py`, a standalone local-input analyzer for the repository domain. It hashes every inspected file, records the source location for each observable indicator, and emits JSON with optional CSV and SARIF output. It does not execute supplied content, make network requests, or invoke external security utilities.
+## Usage Example
 
 ```bash
-python3 tools/ghost_extension.py --input ./evidence --output report.json --sarif report.sarif
+python3 main.py --input ./target/ --output report.json --sarif report.sarif --pdf report.pdf
 ```
 
-The extension is an evidence triage aid. A marker is not a confirmed vulnerability; validate it against the authorized environment and the repository's documented limitations.
+## Documentation
 
+- Architecture: `docs/architecture.md`
+- CLI Reference: `docs/cli-reference.md`
+- Security Policy: `SECURITY.md`
+- Contributing: `CONTRIBUTING.md`
